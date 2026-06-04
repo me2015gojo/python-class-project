@@ -9,6 +9,6 @@
 # 5.  input()         →  to let the user search for a student
 
 grade_book={"jake":98,"Emily":94,"james":99,'jax':32,"jackiechan":64}
-grade_book.
+print(max(grade_book.values()))
 
 
