@@ -16,8 +16,10 @@ class BANKATM(ATM):
             self.balance-=amount
             print(f"withdrawn:{amount}")
         else:
-            print("insuffeisient balance")
-atm=BANKATM(100000)
+            print("insuffisient balance")
+    def check_balance(self):
+        print(f'balance:{self.balance}')
+atm=BANKATM(1000000000000000000000000000000000000000)
 atm.check_balance()
 atm.withdraw(3000)
 atm.check_balance()
