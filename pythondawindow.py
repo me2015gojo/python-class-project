@@ -10,5 +10,5 @@ while running:
             running = False
     screen.fill(('yellow'))
     pygame.display.flip()
-                                                                                                                                                                                        
+    
 pygame.quit()
