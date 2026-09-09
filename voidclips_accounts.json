@@ -1,0 +1,14 @@
+{
+    "99dev": {
+        "password": "0b98e596f23b78edf87a8a4a302ba2b1e205a3dfd990ad5151af4ce02b2d30a2",
+        "element": "Fire",
+        "level": 3,
+        "gold": 682
+    },
+    "99dev9": {
+        "password": "ae7742a827226a84ae4cdb01307a200ad8d95ad2dfedf2f293841cb9640551ed",
+        "element": "Fire",
+        "level": 1,
+        "gold": 100
+    }
+}

@@ -1,444 +1,239 @@
 import pygame
-import socket
-import threading
-import json
 import sys
-import os
-import math
 import random
-import time
+import math
+import json
+import os
+import hashlib
+
+# ============================================================
+# VOIDCLIPS BETA 2
+# Open World Dragon Slayer RPG
+# ============================================================
 
 pygame.init()
 pygame.font.init()
 
-# ============================================================
-# DRAGON SLAYER ONLINE
-# Single-file multiplayer RPG prototype
-# ============================================================
-
-WIDTH, HEIGHT = 1280, 720
+WIDTH = 1100
+HEIGHT = 700
 FPS = 60
-SERVER_IP = "127.0.0.1"
-SERVER_PORT = 5050
-DATA_FILE = "dragon_players.json"
 
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("Dragon Slayer Online")
+pygame.display.set_caption("VoidClips Beta 2")
 clock = pygame.time.Clock()
 
-# ---------------- COLORS ----------------
+# ============================================================
+# COLORS
+# ============================================================
 
-BG = (10, 13, 20)
-PANEL = (20, 25, 36)
-PANEL2 = (28, 34, 48)
-WHITE = (240, 243, 250)
-MUTED = (145, 155, 175)
-GOLD = (239, 184, 67)
-RED = (220, 65, 70)
-GREEN = (70, 205, 120)
-BLUE = (70, 145, 235)
-PURPLE = (165, 90, 230)
-CYAN = (75, 205, 220)
-ORANGE = (235, 120, 45)
-DARK = (7, 9, 14)
 BLACK = (0, 0, 0)
+WHITE = (255, 255, 255)
 
-ELEMENTS = {
-    "Fire": (235, 75, 45),
-    "Water": (65, 145, 235),
-    "Earth": (75, 175, 100),
-    "Air": (130, 205, 225),
-    "Void": (165, 80, 220)
+COLOR_BG = (12, 16, 25)
+COLOR_PANEL = (27, 33, 46)
+COLOR_PANEL2 = (38, 45, 60)
+
+COLOR_TEXT = (240, 243, 250)
+COLOR_MUTED = (150, 160, 180)
+
+COLOR_GOLD = (240, 185, 55)
+COLOR_RED = (220, 60, 65)
+COLOR_GREEN = (70, 200, 105)
+COLOR_BLUE = (65, 130, 235)
+COLOR_PURPLE = (150, 80, 220)
+COLOR_CYAN = (60, 205, 220)
+COLOR_ORANGE = (240, 120, 45)
+
+COLOR_GRASS = (45, 100, 58)
+COLOR_GRASS2 = (52, 115, 64)
+COLOR_WATER = (30, 80, 130)
+COLOR_ROCK = (90, 90, 100)
+COLOR_TREE = (35, 80, 42)
+
+ELEMENT_COLORS = {
+    "Fire": (235, 75, 40),
+    "Water": (50, 135, 230),
+    "Earth": (80, 170, 90),
+    "Air": (150, 210, 235),
+    "Void": (145, 65, 205)
 }
 
-# ---------------- FONTS ----------------
+# ============================================================
+# FONTS
+# ============================================================
 
 def font(size, bold=False):
-    return pygame.font.SysFont("arial", size, bold=bold)
+    return pygame.font.SysFont("Arial", size, bold=bold)
 
-F12 = font(12)
-F14 = font(14)
-F16 = font(16)
-F18 = font(18)
-F20 = font(20, True)
-F24 = font(24, True)
-F30 = font(30, True)
-F42 = font(42, True)
-F60 = font(60, True)
+FONT_TITLE = font(42, True)
+FONT_BIG = font(30, True)
+FONT_MED = font(22, True)
+FONT = font(18)
+FONT_SMALL = font(15)
+FONT_TINY = font(13)
 
 # ============================================================
-# UTILITY
+# UTILITIES
 # ============================================================
 
-def clamp(v, a, b):
-    return max(a, min(b, v))
-
-
-def distance(a, b):
-    return math.hypot(a[0] - b[0], a[1] - b[1])
-
-
-def draw_text(surface, text, pos, f=F16, color=WHITE, center=False):
+def draw_text(surface, text, x, y, color=COLOR_TEXT, f=FONT, center=False):
     img = f.render(str(text), True, color)
-    rect = img.get_rect()
 
     if center:
-        rect.center = pos
+        rect = img.get_rect(center=(x, y))
     else:
-        rect.topleft = pos
+        rect = img.get_rect(topleft=(x, y))
 
     surface.blit(img, rect)
     return rect
 
 
-def panel(surface, rect, color=PANEL, radius=12, border=None):
-    pygame.draw.rect(surface, color, rect, border_radius=radius)
-
-    if border:
-        pygame.draw.rect(surface, border, rect, 2, border_radius=radius)
+def clamp(value, minimum, maximum):
+    return max(minimum, min(maximum, value))
 
 
-def button(surface, rect, text, mouse, active=False):
-    hover = rect.collidepoint(mouse)
-    col = (52, 63, 85) if hover else PANEL2
+def distance(x1, y1, x2, y2):
+    return math.hypot(x1 - x2, y1 - y2)
 
-    if active:
-        col = (68, 90, 125)
 
-    pygame.draw.rect(surface, col, rect, border_radius=8)
-    pygame.draw.rect(surface, (65, 75, 95), rect, 1, border_radius=8)
-
-    draw_text(surface, text, rect.center, F16, WHITE, True)
-    return hover
+def hash_password(password):
+    return hashlib.sha256(password.encode()).hexdigest()
 
 
 # ============================================================
-# SERVER
+# ACCOUNT SYSTEM
 # ============================================================
 
-class Server:
-    def __init__(self):
-        self.players = {}
-        self.clients = {}
-        self.lock = threading.Lock()
-        self.running = True
+ACCOUNT_FILE = "voidclips_accounts.json"
 
-        self.world_items = [
-            {"id": i, "x": random.randint(150, 3000),
-             "y": random.randint(150, 2500),
-             "type": random.choice(["wood", "ore", "herb"])}
-            for i in range(180)
-        ]
 
-        self.load_players()
+def load_accounts():
+    if not os.path.exists(ACCOUNT_FILE):
+        return {}
 
-    def load_players(self):
-        if os.path.exists(DATA_FILE):
-            try:
-                with open(DATA_FILE, "r") as f:
-                    self.players = json.load(f)
-            except:
-                self.players = {}
+    try:
+        with open(ACCOUNT_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
 
-    def save_players(self):
-        try:
-            with open(DATA_FILE, "w") as f:
-                json.dump(self.players, f, indent=2)
-        except:
-            pass
 
-    def send(self, conn, data):
-        try:
-            conn.sendall((json.dumps(data) + "\n").encode())
-        except:
-            pass
-
-    def broadcast(self, data, exclude=None):
-        raw = (json.dumps(data) + "\n").encode()
-
-        with self.lock:
-            for name, conn in list(self.clients.items()):
-                if conn != exclude:
-                    try:
-                        conn.sendall(raw)
-                    except:
-                        pass
-
-    def register(self, username, password):
-        with self.lock:
-            if username in self.players:
-                return False, "Username already exists."
-
-            if len(username) < 3:
-                return False, "Username must be at least 3 characters."
-
-            if len(password) < 4:
-                return False, "Password must be at least 4 characters."
-
-            self.players[username] = {
-                "password": password,
-                "x": 1500,
-                "y": 1250,
-                "hp": 100,
-                "max_hp": 100,
-                "level": 1,
-                "xp": 0,
-                "gold": 100,
-                "element": "Fire",
-                "skin": 0,
-                "hair": 0,
-                "inventory": {
-                    "wood": 0,
-                    "ore": 0,
-                    "herb": 0,
-                    "iron_armor": 0,
-                    "health_potion": 2
-                }
-            }
-
-            self.save_players()
-
-        return True, "Account created."
-
-    def login(self, username, password):
-        with self.lock:
-            p = self.players.get(username)
-
-            if not p:
-                return False, "Account not found."
-
-            if p["password"] != password:
-                return False, "Incorrect password."
-
-        return True, "Login successful."
-
-    def handle_client(self, conn, address):
-        username = None
-
-        try:
-            file = conn.makefile("r")
-
-            for line in file:
-                if not line.strip():
-                    continue
-
-                try:
-                    msg = json.loads(line)
-                except:
-                    continue
-
-                action = msg.get("type")
-
-                if action == "register":
-                    ok, text = self.register(
-                        msg.get("username", ""),
-                        msg.get("password", "")
-                    )
-
-                    self.send(conn, {
-                        "type": "auth",
-                        "success": ok,
-                        "message": text
-                    })
-
-                elif action == "login":
-                    ok, text = self.login(
-                        msg.get("username", ""),
-                        msg.get("password", "")
-                    )
-
-                    if ok:
-                        username = msg["username"]
-
-                        with self.lock:
-                            self.clients[username] = conn
-
-                    p = self.players.get(username, {})
-
-                    self.send(conn, {
-                        "type": "auth",
-                        "success": ok,
-                        "message": text,
-                        "player": p if ok else None
-                    })
-
-                    if ok:
-                        self.broadcast({
-                            "type": "system",
-                            "message": f"{username} entered the realm."
-                        })
-
-                elif action == "move" and username:
-                    with self.lock:
-                        p = self.players.get(username)
-
-                        if p:
-                            p["x"] = clamp(msg["x"], 80, 2920)
-                            p["y"] = clamp(msg["y"], 80, 2420)
-
-                elif action == "chat" and username:
-                    text = str(msg.get("message", "")).strip()
-
-                    if text:
-                        self.broadcast({
-                            "type": "chat",
-                            "username": username,
-                            "message": text[:120]
-                        })
-
-                elif action == "update" and username:
-                    with self.lock:
-                        if username in self.players:
-                            for key in [
-                                "x", "y", "hp", "max_hp",
-                                "level", "xp", "gold",
-                                "element", "skin", "hair",
-                                "inventory"
-                            ]:
-                                if key in msg:
-                                    self.players[username][key] = msg[key]
-
-                elif action == "request_world" and username:
-                    with self.lock:
-                        players = {
-                            name: {
-                                "x": p["x"],
-                                "y": p["y"],
-                                "hp": p["hp"],
-                                "max_hp": p["max_hp"],
-                                "level": p["level"],
-                                "element": p["element"],
-                                "skin": p.get("skin", 0),
-                                "hair": p.get("hair", 0)
-                            }
-                            for name, p in self.players.items()
-                            if name in self.clients
-                        }
-
-                    self.send(conn, {
-                        "type": "world",
-                        "players": players,
-                        "resources": self.world_items
-                    })
-
-        except Exception:
-            pass
-
-        finally:
-            if username:
-                with self.lock:
-                    self.clients.pop(username, None)
-
-                self.broadcast({
-                    "type": "system",
-                    "message": f"{username} left the realm."
-                })
-
-                self.save_players()
-
-            try:
-                conn.close()
-            except:
-                pass
-
-    def run(self):
-        print("Dragon Slayer server starting...")
-
-        server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        server.bind(("0.0.0.0", SERVER_PORT))
-        server.listen(20)
-
-        print(f"Server running on port {SERVER_PORT}")
-
-        while self.running:
-            try:
-                conn, addr = server.accept()
-
-                thread = threading.Thread(
-                    target=self.handle_client,
-                    args=(conn, addr),
-                    daemon=True
-                )
-
-                thread.start()
-
-            except:
-                break
+def save_accounts(accounts):
+    try:
+        with open(ACCOUNT_FILE, "w", encoding="utf-8") as f:
+            json.dump(accounts, f, indent=4)
+    except Exception as e:
+        print("Could not save accounts:", e)
 
 
 # ============================================================
-# NETWORK CLIENT
+# BUTTON
 # ============================================================
 
-class Network:
-    def __init__(self):
-        self.sock = None
-        self.connected = False
-        self.incoming = []
-        self.lock = threading.Lock()
+class Button:
+    def __init__(self, rect, text, color=COLOR_PANEL2, hover=COLOR_BLUE):
+        self.rect = pygame.Rect(rect)
+        self.text = text
+        self.color = color
+        self.hover = hover
 
-    def connect(self):
-        try:
-            self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.sock.connect((SERVER_IP, SERVER_PORT))
-            self.connected = True
+    def draw(self, surface):
+        mouse = pygame.mouse.get_pos()
 
-            threading.Thread(
-                target=self.receive,
-                daemon=True
-            ).start()
+        color = self.hover if self.rect.collidepoint(mouse) else self.color
 
-            return True
-        except:
-            return False
+        pygame.draw.rect(
+            surface,
+            color,
+            self.rect,
+            border_radius=8
+        )
 
-    def receive(self):
-        buffer = ""
+        pygame.draw.rect(
+            surface,
+            (80, 90, 110),
+            self.rect,
+            2,
+            border_radius=8
+        )
 
-        while self.connected:
-            try:
-                data = self.sock.recv(4096)
+        draw_text(
+            surface,
+            self.text,
+            self.rect.centerx,
+            self.rect.centery,
+            WHITE,
+            FONT,
+            True
+        )
 
-                if not data:
-                    break
+    def clicked(self, event):
+        return (
+            event.type == pygame.MOUSEBUTTONDOWN
+            and event.button == 1
+            and self.rect.collidepoint(event.pos)
+        )
 
-                buffer += data.decode()
 
-                while "\n" in buffer:
-                    line, buffer = buffer.split("\n", 1)
+# ============================================================
+# TEXT INPUT
+# ============================================================
 
-                    try:
-                        msg = json.loads(line)
+class TextInput:
+    def __init__(self, rect, placeholder="", password=False):
+        self.rect = pygame.Rect(rect)
+        self.placeholder = placeholder
+        self.password = password
+        self.text = ""
+        self.active = False
 
-                        with self.lock:
-                            self.incoming.append(msg)
+    def handle_event(self, event):
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            self.active = self.rect.collidepoint(event.pos)
 
-                    except:
-                        pass
+        if event.type == pygame.KEYDOWN and self.active:
+            if event.key == pygame.K_BACKSPACE:
+                self.text = self.text[:-1]
 
-            except:
-                break
+            elif event.key == pygame.K_RETURN:
+                self.active = False
 
-        self.connected = False
+            else:
+                if len(self.text) < 24:
+                    if event.unicode.isprintable():
+                        self.text += event.unicode
 
-    def send(self, data):
-        if not self.connected:
-            return
+    def draw(self, surface):
+        color = COLOR_BLUE if self.active else (70, 78, 95)
 
-        try:
-            self.sock.sendall(
-                (json.dumps(data) + "\n").encode()
+        pygame.draw.rect(
+            surface,
+            (18, 22, 31),
+            self.rect,
+            border_radius=7
+        )
+
+        pygame.draw.rect(
+            surface,
+            color,
+            self.rect,
+            2,
+            border_radius=7
+        )
+
+        if self.text:
+            display = "*" * len(self.text) if self.password else self.text
+            draw_text(surface, display, self.rect.x + 12,
+                      self.rect.y + 10, WHITE, FONT)
+        else:
+            draw_text(
+                surface,
+                self.placeholder,
+                self.rect.x + 12,
+                self.rect.y + 10,
+                COLOR_MUTED,
+                FONT
             )
-        except:
-            self.connected = False
-
-    def messages(self):
-        with self.lock:
-            msgs = self.incoming[:]
-            self.incoming.clear()
-
-        return msgs
 
 
 # ============================================================
@@ -446,36 +241,50 @@ class Network:
 # ============================================================
 
 class Player:
-    def __init__(self):
-        self.username = ""
-        self.x = 1500
-        self.y = 1250
+    def __init__(self, username, element="Fire"):
+        self.username = username
+        self.element = element
 
-        self.hp = 100
+        self.x = 1800
+        self.y = 1400
+
+        self.speed = 4
+
         self.max_hp = 100
+        self.hp = 100
 
         self.level = 1
         self.xp = 0
         self.gold = 100
 
-        self.element = "Fire"
+        self.attack_power = 14
+
         self.skin = 0
         self.hair = 0
+        self.armor = "Cloth"
 
         self.inventory = {
-            "wood": 0,
-            "ore": 0,
-            "herb": 0,
-            "iron_armor": 0,
-            "health_potion": 2
+            "Wood": 0,
+            "Stone": 0,
+            "Iron": 0,
+            "Crystal": 0,
+            "Dragon Scale": 0,
+            "Potion": 3
         }
 
-        self.attack_cooldown = 0
+        self.equipment = {
+            "Helmet": None,
+            "Chest": "Cloth",
+            "Legs": "Cloth",
+            "Weapon": "Rusty Sword"
+        }
+
+        self.cooldown = 0
 
     def xp_needed(self):
-        return 100 + self.level * 75
+        return self.level * 100
 
-    def gain_xp(self, amount):
+    def add_xp(self, amount):
         self.xp += amount
 
         while self.xp >= self.xp_needed():
@@ -483,74 +292,560 @@ class Player:
             self.level += 1
             self.max_hp += 20
             self.hp = self.max_hp
+            self.attack_power += 3
 
-    def damage(self):
+    def attack(self):
         return random.randint(
-            12 + self.level * 2,
-            20 + self.level * 3
+            self.attack_power - 3,
+            self.attack_power + 5
         )
 
-    def heal(self):
-        if self.inventory["health_potion"] <= 0:
-            return False
-
-        self.inventory["health_potion"] -= 1
-        self.hp = min(self.max_hp, self.hp + 40)
-        return True
+    def use_potion(self):
+        if self.inventory["Potion"] > 0 and self.hp < self.max_hp:
+            self.inventory["Potion"] -= 1
+            self.hp = min(self.max_hp, self.hp + 40)
+            return True
+        return False
 
 
 # ============================================================
-# ENEMIES
+# RESOURCE
 # ============================================================
 
-class Enemy:
-    def __init__(self, x, y, kind):
+class Resource:
+    def __init__(self, kind, x, y):
+        self.kind = kind
         self.x = x
         self.y = y
-        self.kind = kind
 
-        if kind == "Goblin":
-            self.hp = 50
-            self.max_hp = 50
-            self.damage = 8
-            self.color = GREEN
+        self.radius = 18
 
-        elif kind == "Wraith":
-            self.hp = 80
-            self.max_hp = 80
-            self.damage = 13
-            self.color = PURPLE
+        self.collected = False
+        self.respawn = 0
 
-        else:
-            self.hp = 120
-            self.max_hp = 120
-            self.damage = 18
-            self.color = RED
+    def update(self):
+        if self.collected:
+            self.respawn -= 1
 
-        self.attack_timer = random.uniform(1, 3)
-        self.dead = False
+            if self.respawn <= 0:
+                self.collected = False
 
-    def update(self, player, dt):
-        if self.dead:
+    def collect(self, player):
+        if self.collected:
+            return False
+
+        if distance(
+            player.x,
+            player.y,
+            self.x,
+            self.y
+        ) < 45:
+
+            player.inventory[self.kind] += 1
+
+            self.collected = True
+            self.respawn = FPS * 15
+
+            return True
+
+        return False
+
+    def draw(self, surface, camera_x, camera_y):
+        if self.collected:
             return
 
-        d = distance((self.x, self.y), (player.x, player.y))
+        sx = int(self.x - camera_x)
+        sy = int(self.y - camera_y)
 
-        if d < 330:
-            if d > 70:
-                angle = math.atan2(
-                    player.y - self.y,
-                    player.x - self.x
+        colors = {
+            "Wood": (130, 80, 40),
+            "Stone": (130, 130, 140),
+            "Iron": (170, 170, 180),
+            "Crystal": (100, 210, 255),
+            "Dragon Scale": (180, 70, 220)
+        }
+
+        color = colors.get(self.kind, WHITE)
+
+        pygame.draw.circle(
+            surface,
+            color,
+            (sx, sy),
+            self.radius
+        )
+
+        pygame.draw.circle(
+            surface,
+            WHITE,
+            (sx, sy),
+            self.radius,
+            2
+        )
+
+        draw_text(
+            surface,
+            self.kind,
+            sx,
+            sy + 25,
+            COLOR_TEXT,
+            FONT_TINY,
+            True
+        )
+
+
+# ============================================================
+# NPC
+# ============================================================
+
+class NPC:
+    def __init__(self, name, x, y, role):
+        self.name = name
+        self.x = x
+        self.y = y
+        self.role = role
+
+    def draw(self, surface, camera_x, camera_y):
+        sx = int(self.x - camera_x)
+        sy = int(self.y - camera_y)
+
+        pygame.draw.circle(
+            surface,
+            COLOR_GOLD,
+            (sx, sy - 20),
+            13
+        )
+
+        pygame.draw.rect(
+            surface,
+            COLOR_PURPLE,
+            (sx - 15, sy - 7, 30, 35),
+            border_radius=7
+        )
+
+        draw_text(
+            surface,
+            self.name,
+            sx,
+            sy - 48,
+            WHITE,
+            FONT_TINY,
+            True
+        )
+
+        draw_text(
+            surface,
+            self.role,
+            sx,
+            sy + 35,
+            COLOR_GOLD,
+            FONT_TINY,
+            True
+        )
+
+
+# ============================================================
+# OTHER PLAYERS
+# ============================================================
+
+class WorldPlayer:
+    def __init__(self, username, x, y, element):
+        self.username = username
+        self.x = x
+        self.y = y
+        self.element = element
+
+        self.hp = 100
+        self.max_hp = 100
+
+        self.level = random.randint(1, 15)
+
+        self.attack_timer = random.randint(0, 300)
+
+    def update(self, world):
+        self.attack_timer -= 1
+
+        if self.attack_timer <= 0:
+            self.attack_timer = random.randint(180, 500)
+
+            self.x += random.randint(-120, 120)
+            self.y += random.randint(-120, 120)
+
+            self.x = clamp(self.x, 200, world.world_width - 200)
+            self.y = clamp(self.y, 200, world.world_height - 200)
+
+    def draw(self, surface, camera_x, camera_y):
+        sx = int(self.x - camera_x)
+        sy = int(self.y - camera_y)
+
+        color = ELEMENT_COLORS.get(
+            self.element,
+            COLOR_BLUE
+        )
+
+        pygame.draw.circle(
+            surface,
+            color,
+            (sx, sy - 20),
+            13
+        )
+
+        pygame.draw.rect(
+            surface,
+            (75, 80, 95),
+            (sx - 14, sy - 7, 28, 36),
+            border_radius=6
+        )
+
+        pygame.draw.rect(
+            surface,
+            color,
+            (sx - 14, sy - 7, 28, 8)
+        )
+
+        draw_text(
+            surface,
+            self.username,
+            sx,
+            sy - 50,
+            WHITE,
+            FONT_TINY,
+            True
+        )
+
+        # HP bar
+        pygame.draw.rect(
+            surface,
+            (60, 20, 25),
+            (sx - 25, sy - 38, 50, 5)
+        )
+
+        pygame.draw.rect(
+            surface,
+            COLOR_GREEN,
+            (
+                sx - 25,
+                sy - 38,
+                int(50 * self.hp / self.max_hp),
+                5
+            )
+        )
+
+
+# ============================================================
+# WORLD
+# ============================================================
+
+class World:
+    def __init__(self):
+        self.world_width = 3600
+        self.world_height = 2800
+
+        self.resources = []
+        self.npcs = []
+        self.other_players = []
+
+        self.generate()
+
+    def generate(self):
+        random.seed(7)
+
+        resource_types = [
+            "Wood",
+            "Stone",
+            "Iron",
+            "Crystal"
+        ]
+
+        for _ in range(150):
+            kind = random.choice(resource_types)
+
+            x = random.randint(
+                100,
+                self.world_width - 100
+            )
+
+            y = random.randint(
+                100,
+                self.world_height - 100
+            )
+
+            self.resources.append(
+                Resource(kind, x, y)
+            )
+
+        # Rare dragon scales
+        for _ in range(12):
+            self.resources.append(
+                Resource(
+                    "Dragon Scale",
+                    random.randint(200, self.world_width - 200),
+                    random.randint(200, self.world_height - 200)
+                )
+            )
+
+        self.npcs = [
+            NPC("Elder", 1800, 1300, "Quest Giver"),
+            NPC("Blacksmith", 1950, 1350, "Crafting"),
+            NPC("Merchant", 1650, 1350, "Shop"),
+            NPC("Mage", 1850, 1500, "Magic")
+        ]
+
+        names = [
+            "DragonKnight",
+            "ShadowX",
+            "VoidWalker",
+            "FireLord",
+            "CrystalFox",
+            "Knight_77",
+            "Rogue",
+            "StormBorn"
+        ]
+
+        elements = [
+            "Fire",
+            "Water",
+            "Earth",
+            "Air",
+            "Void"
+        ]
+
+        for i in range(12):
+            self.other_players.append(
+                WorldPlayer(
+                    random.choice(names) + str(i),
+                    random.randint(400, self.world_width - 400),
+                    random.randint(400, self.world_height - 400),
+                    random.choice(elements)
+                )
+            )
+
+    def update(self):
+        for resource in self.resources:
+            resource.update()
+
+        for player in self.other_players:
+            player.update(self)
+
+    def draw(self, surface, camera_x, camera_y):
+        # Grass
+        surface.fill(COLOR_GRASS)
+
+        tile = 80
+
+        start_x = int(camera_x // tile) * tile
+        start_y = int(camera_y // tile) * tile
+
+        for x in range(start_x, int(camera_x + WIDTH) + tile, tile):
+            for y in range(start_y, int(camera_y + HEIGHT) + tile, tile):
+
+                sx = int(x - camera_x)
+                sy = int(y - camera_y)
+
+                pygame.draw.rect(
+                    surface,
+                    COLOR_GRASS2,
+                    (sx, sy, tile - 2, tile - 2)
                 )
 
-                self.x += math.cos(angle) * 35 * dt
-                self.y += math.sin(angle) * 35 * dt
+        # Water lake
+        lake = pygame.Rect(
+            500 - camera_x,
+            400 - camera_y,
+            700,
+            400
+        )
 
-            self.attack_timer -= dt
+        pygame.draw.ellipse(
+            surface,
+            COLOR_WATER,
+            lake
+        )
 
-            if d < 70 and self.attack_timer <= 0:
-                player.hp -= self.damage
-                self.attack_timer = 2
+        # Town
+        town = pygame.Rect(
+            1450 - camera_x,
+            1050 - camera_y,
+            700,
+            600
+        )
+
+        pygame.draw.rect(
+            surface,
+            (95, 70, 50),
+            town,
+            border_radius=25
+        )
+
+        draw_text(
+            surface,
+            "VOIDHAVEN",
+            1800 - camera_x,
+            1080 - camera_y,
+            COLOR_GOLD,
+            FONT_BIG,
+            True
+        )
+
+        # Roads
+        pygame.draw.rect(
+            surface,
+            (155, 125, 80),
+            (0 - camera_x, 1370 - camera_y,
+             self.world_width, 80)
+        )
+
+        pygame.draw.rect(
+            surface,
+            (155, 125, 80),
+            (1760 - camera_x, 0 - camera_y,
+             80, self.world_height)
+        )
+
+        for resource in self.resources:
+            resource.draw(
+                surface,
+                camera_x,
+                camera_y
+            )
+
+        for npc in self.npcs:
+            npc.draw(
+                surface,
+                camera_x,
+                camera_y
+            )
+
+        for player in self.other_players:
+            player.draw(
+                surface,
+                camera_x,
+                camera_y
+            )
+
+
+# ============================================================
+# CHAT
+# ============================================================
+
+class Chat:
+    def __init__(self):
+        self.messages = [
+            ("SERVER", "Welcome to VoidHaven!")
+        ]
+
+        self.input = ""
+        self.active = False
+
+    def add(self, username, message):
+        self.messages.append(
+            (username, message)
+        )
+
+        if len(self.messages) > 7:
+            self.messages.pop(0)
+
+    def handle_event(self, event, username):
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            if pygame.Rect(
+                20,
+                HEIGHT - 85,
+                430,
+                45
+            ).collidepoint(event.pos):
+                self.active = True
+
+        if event.type == pygame.KEYDOWN and self.active:
+
+            if event.key == pygame.K_BACKSPACE:
+                self.input = self.input[:-1]
+
+            elif event.key == pygame.K_RETURN:
+                if self.input.strip():
+                    self.add(
+                        username,
+                        self.input.strip()
+                    )
+
+                self.input = ""
+                self.active = False
+
+            else:
+                if len(self.input) < 70:
+                    if event.unicode.isprintable():
+                        self.input += event.unicode
+
+    def draw(self, surface):
+        panel = pygame.Rect(
+            15,
+            HEIGHT - 180,
+            455,
+            165
+        )
+
+        pygame.draw.rect(
+            surface,
+            (18, 22, 30),
+            panel,
+            border_radius=10
+        )
+
+        pygame.draw.rect(
+            surface,
+            (70, 80, 100),
+            panel,
+            2,
+            border_radius=10
+        )
+
+        y = HEIGHT - 170
+
+        for username, message in self.messages:
+            draw_text(
+                surface,
+                f"{username}: {message}",
+                28,
+                y,
+                COLOR_TEXT,
+                FONT_SMALL
+            )
+
+            y += 19
+
+        input_rect = pygame.Rect(
+            25,
+            HEIGHT - 65,
+            430,
+            40
+        )
+
+        pygame.draw.rect(
+            surface,
+            (12, 16, 23),
+            input_rect,
+            border_radius=6
+        )
+
+        pygame.draw.rect(
+            surface,
+            COLOR_BLUE if self.active else (70, 80, 95),
+            input_rect,
+            2,
+            border_radius=6
+        )
+
+        display = self.input
+
+        if self.active and not display:
+            display = "Type message..."
+
+        draw_text(
+            surface,
+            display,
+            35,
+            HEIGHT - 55,
+            COLOR_MUTED if not self.input else WHITE,
+            FONT_SMALL
+        )
 
 
 # ============================================================
@@ -559,1519 +854,1138 @@ class Enemy:
 
 class Game:
     def __init__(self):
-        self.net = Network()
-        self.player = Player()
+        self.running = True
 
         self.state = "LOGIN"
-        self.auth_mode = "login"
 
-        self.username = ""
-        self.password = ""
-        self.chat_input = ""
+        self.accounts = load_accounts()
 
-        self.active_field = "username"
-        self.message = ""
+        self.player = None
 
-        self.camera_x = 0
-        self.camera_y = 0
+        self.world = World()
 
-        self.players = {}
-        self.resources = []
+        self.chat = Chat()
 
-        self.enemies = [
-            Enemy(800, 800, "Goblin"),
-            Enemy(1100, 600, "Goblin"),
-            Enemy(1900, 900, "Wraith"),
-            Enemy(2300, 1500, "Dragonling"),
-            Enemy(700, 1900, "Wraith"),
-            Enemy(2500, 500, "Dragonling")
-        ]
+        self.notification = ""
+        self.notification_timer = 0
 
-        self.chat = [
-            "Welcome to the realm.",
-            "Gather materials and forge your destiny."
-        ]
+        self.selected_enemy = None
 
-        self.chat_open = False
-        self.inventory_open = False
-        self.customize_open = False
+        self.craft_menu = False
+        self.inventory_menu = False
+        self.customize_menu = False
 
-        self.last_send = 0
-        self.time = 0
+        self.login_username = TextInput(
+            (390, 275, 320, 48),
+            "Username"
+        )
 
-        self.connecting = False
+        self.login_password = TextInput(
+            (390, 345, 320, 48),
+            "Password",
+            True
+        )
 
-    # ========================================================
-    # NETWORK
-    # ========================================================
+        self.register_mode = False
 
-    def connect(self):
-        if self.net.connected:
+        self.buttons = {}
+
+    # --------------------------------------------------------
+    # NOTIFICATION
+    # --------------------------------------------------------
+
+    def notify(self, text):
+        self.notification = text
+        self.notification_timer = FPS * 3
+
+    # --------------------------------------------------------
+    # ACCOUNT
+    # --------------------------------------------------------
+
+    def login(self):
+        username = self.login_username.text.strip()
+        password = self.login_password.text
+
+        if not username or not password:
+            self.notify("Enter username and password.")
             return
 
-        self.connecting = True
-
-        if self.net.connect():
-            self.message = "Connected to server."
-        else:
-            self.message = "Could not connect to server."
-
-        self.connecting = False
-
-    def send_auth(self):
-        if not self.username or not self.password:
-            self.message = "Enter both username and password."
+        if username not in self.accounts:
+            self.notify("Account not found.")
             return
 
-        if not self.net.connected:
-            self.connect()
-
-        if not self.net.connected:
+        if self.accounts[username]["password"] != hash_password(password):
+            self.notify("Incorrect password.")
             return
 
-        self.net.send({
-            "type": self.auth_mode,
-            "username": self.username,
-            "password": self.password
+        data = self.accounts[username]
+
+        self.player = Player(
+            username,
+            data.get("element", "Fire")
+        )
+
+        self.load_player_data(data)
+
+        self.state = "WORLD"
+
+        self.chat.add(
+            "SERVER",
+            f"Welcome back, {username}!"
+        )
+
+    def register(self):
+        username = self.login_username.text.strip()
+        password = self.login_password.text
+
+        if len(username) < 3:
+            self.notify("Username must be at least 3 characters.")
+            return
+
+        if len(password) < 4:
+            self.notify("Password must be at least 4 characters.")
+            return
+
+        if username in self.accounts:
+            self.notify("Username already exists.")
+            return
+
+        self.accounts[username] = {
+            "password": hash_password(password),
+            "element": "Fire",
+            "level": 1,
+            "gold": 100
+        }
+
+        save_accounts(self.accounts)
+
+        self.notify(
+            "Account created! You can now log in."
+        )
+
+        self.register_mode = False
+
+    def load_player_data(self, data):
+        self.player.level = data.get(
+            "level",
+            1
+        )
+
+        self.player.gold = data.get(
+            "gold",
+            100
+        )
+
+        self.player.element = data.get(
+            "element",
+            "Fire"
+        )
+
+    def save_player(self):
+        if not self.player:
+            return
+
+        username = self.player.username
+
+        if username not in self.accounts:
+            self.accounts[username] = {}
+
+        self.accounts[username].update({
+            "password": self.accounts[username].get(
+                "password",
+                ""
+            ),
+            "element": self.player.element,
+            "level": self.player.level,
+            "gold": self.player.gold
         })
 
-    # ========================================================
-    # INPUT
-    # ========================================================
+        save_accounts(self.accounts)
 
-    def input_event(self, event):
+    # --------------------------------------------------------
+    # MOVEMENT
+    # --------------------------------------------------------
 
-        if event.type == pygame.QUIT:
-            pygame.quit()
-            sys.exit()
-
-        # ---------------- LOGIN ----------------
-
-        if self.state == "LOGIN":
-
-            if event.type == pygame.MOUSEBUTTONDOWN:
-
-                mx, my = event.pos
-
-                user_box = pygame.Rect(390, 270, 500, 55)
-                pass_box = pygame.Rect(390, 350, 500, 55)
-
-                if user_box.collidepoint(mx, my):
-                    self.active_field = "username"
-
-                elif pass_box.collidepoint(mx, my):
-                    self.active_field = "password"
-
-                login_button = pygame.Rect(390, 440, 240, 55)
-                register_button = pygame.Rect(650, 440, 240, 55)
-
-                if login_button.collidepoint(mx, my):
-                    self.send_auth()
-
-                elif register_button.collidepoint(mx, my):
-                    self.auth_mode = (
-                        "register"
-                        if self.auth_mode == "login"
-                        else "login"
-                    )
-
-                    self.message = (
-                        "Register mode."
-                        if self.auth_mode == "register"
-                        else "Login mode."
-                    )
-
-                connect_button = pygame.Rect(390, 515, 500, 45)
-
-                if connect_button.collidepoint(mx, my):
-                    self.connect()
-
-            elif event.type == pygame.KEYDOWN:
-
-                if event.key == pygame.K_TAB:
-                    self.active_field = (
-                        "password"
-                        if self.active_field == "username"
-                        else "username"
-                    )
-
-                elif event.key == pygame.K_BACKSPACE:
-
-                    if self.active_field == "username":
-                        self.username = self.username[:-1]
-                    else:
-                        self.password = self.password[:-1]
-
-                elif event.key == pygame.K_RETURN:
-                    self.send_auth()
-
-                elif event.unicode.isprintable():
-
-                    if self.active_field == "username":
-                        if len(self.username) < 18:
-                            self.username += event.unicode
-
-                    else:
-                        if len(self.password) < 32:
-                            self.password += event.unicode
-
-            return
-
-        # ---------------- WORLD ----------------
-
-        if event.type == pygame.KEYDOWN:
-
-            if event.key == pygame.K_i:
-                self.inventory_open = not self.inventory_open
-
-            elif event.key == pygame.K_c:
-                self.customize_open = not self.customize_open
-
-            elif event.key == pygame.K_RETURN:
-                self.chat_open = not self.chat_open
-
-                if not self.chat_open:
-                    self.send_chat()
-
-            elif event.key == pygame.K_h:
-                if self.player.heal():
-                    self.message = "You drank a health potion."
-
-            elif event.key == pygame.K_ESCAPE:
-                self.inventory_open = False
-                self.customize_open = False
-                self.chat_open = False
-
-            elif self.chat_open:
-
-                if event.key == pygame.K_BACKSPACE:
-                    self.chat_input = self.chat_input[:-1]
-
-                elif event.key == pygame.K_RETURN:
-                    self.send_chat()
-
-                elif event.unicode.isprintable():
-                    if len(self.chat_input) < 100:
-                        self.chat_input += event.unicode
-
-        if event.type == pygame.MOUSEBUTTONDOWN:
-
-            mx, my = event.pos
-
-            if self.customize_open:
-                self.handle_customize_click(mx, my)
-                return
-
-            if self.inventory_open:
-                self.handle_inventory_click(mx, my)
-                return
-
-            if not self.chat_open:
-                self.attack(mx, my)
-
-    # ========================================================
-    # CHAT
-    # ========================================================
-
-    def send_chat(self):
-        if self.chat_input.strip():
-            self.net.send({
-                "type": "chat",
-                "message": self.chat_input.strip()
-            })
-
-        self.chat_input = ""
-
-    # ========================================================
-    # COMBAT
-    # ========================================================
-
-    def attack(self, mx, my):
-        if self.player.attack_cooldown > 0:
-            return
-
-        world_x = mx + self.camera_x
-        world_y = my + self.camera_y
-
-        # Enemy attack
-        for enemy in self.enemies:
-
-            if enemy.dead:
-                continue
-
-            if distance(
-                (world_x, world_y),
-                (enemy.x, enemy.y)
-            ) < 80:
-
-                dmg = self.player.damage()
-                enemy.hp -= dmg
-
-                self.message = (
-                    f"You hit {enemy.kind} for {dmg}."
-                )
-
-                if enemy.hp <= 0:
-                    enemy.dead = True
-                    self.player.gold += random.randint(10, 35)
-                    self.player.gain_xp(random.randint(20, 45))
-                    self.message = (
-                        f"{enemy.kind} defeated! "
-                        f"+XP +Gold"
-                    )
-
-                self.player.attack_cooldown = 0.35
-                return
-
-        # Player attack
-        for name, p in self.players.items():
-
-            if name == self.player.username:
-                continue
-
-            if distance(
-                (world_x, world_y),
-                (p["x"], p["y"])
-            ) < 70:
-
-                dmg = self.player.damage()
-
-                self.net.send({
-                    "type": "pvp",
-                    "target": name,
-                    "damage": dmg
-                })
-
-                self.message = (
-                    f"You attacked {name}!"
-                )
-
-                self.player.attack_cooldown = 0.5
-                return
-
-    # ========================================================
-    # GATHERING
-    # ========================================================
-
-    def gather(self):
-        for r in self.resources:
-
-            if distance(
-                (self.player.x, self.player.y),
-                (r["x"], r["y"])
-            ) < 65:
-
-                typ = r["type"]
-
-                self.player.inventory[typ] += 1
-
-                self.message = f"Collected {typ}."
-
-                self.resources.remove(r)
-                return
-
-    # ========================================================
-    # CRAFTING
-    # ========================================================
-
-    def craft(self):
-        inv = self.player.inventory
-
-        if inv["wood"] >= 5 and inv["ore"] >= 8:
-
-            inv["wood"] -= 5
-            inv["ore"] -= 8
-            inv["iron_armor"] += 1
-
-            self.player.max_hp += 25
-            self.player.hp = self.player.max_hp
-
-            self.message = "Forged Iron Dragon Armour!"
-
-        else:
-            self.message = "Need 5 wood and 8 ore."
-
-    # ========================================================
-    # CUSTOMIZATION
-    # ========================================================
-
-    def handle_customize_click(self, mx, my):
-
-        if pygame.Rect(760, 230, 200, 45).collidepoint(mx, my):
-            self.player.skin = (
-                self.player.skin + 1
-            ) % 5
-
-        if pygame.Rect(760, 290, 200, 45).collidepoint(mx, my):
-            self.player.hair = (
-                self.player.hair + 1
-            ) % 5
-
-        if pygame.Rect(760, 350, 200, 45).collidepoint(mx, my):
-            elements = list(ELEMENTS)
-            i = elements.index(self.player.element)
-            self.player.element = elements[
-                (i + 1) % len(elements)
-            ]
-
-        if pygame.Rect(760, 430, 200, 50).collidepoint(mx, my):
-            self.customize_open = False
-
-    # ========================================================
-    # INVENTORY
-    # ========================================================
-
-    def handle_inventory_click(self, mx, my):
-
-        if pygame.Rect(
-            720, 570, 200, 50
-        ).collidepoint(mx, my):
-            self.craft()
-
-        if pygame.Rect(
-            720, 630, 200, 50
-        ).collidepoint(mx, my):
-            self.inventory_open = False
-
-    # ========================================================
-    # UPDATE
-    # ========================================================
-
-    def update(self, dt):
-
-        self.time += dt
-
-        if self.state != "WORLD":
-            return
-
+    def move_player(self):
         keys = pygame.key.get_pressed()
-
-        speed = 230
-
-        if keys[pygame.K_LSHIFT]:
-            speed = 340
 
         dx = 0
         dy = 0
 
         if keys[pygame.K_w] or keys[pygame.K_UP]:
-            dy -= 1
+            dy -= self.player.speed
 
         if keys[pygame.K_s] or keys[pygame.K_DOWN]:
-            dy += 1
+            dy += self.player.speed
 
         if keys[pygame.K_a] or keys[pygame.K_LEFT]:
-            dx -= 1
+            dx -= self.player.speed
 
         if keys[pygame.K_d] or keys[pygame.K_RIGHT]:
-            dx += 1
+            dx += self.player.speed
 
-        if dx or dy:
+        if dx and dy:
+            dx *= 0.707
+            dy *= 0.707
 
-            length = math.hypot(dx, dy)
+        self.player.x += dx
+        self.player.y += dy
 
-            dx /= length
-            dy /= length
-
-            self.player.x += dx * speed * dt
-            self.player.y += dy * speed * dt
-
-            self.player.x = clamp(
-                self.player.x, 70, 2930
-            )
-
-            self.player.y = clamp(
-                self.player.y, 70, 2430
-            )
-
-        self.player.attack_cooldown = max(
-            0,
-            self.player.attack_cooldown - dt
+        self.player.x = clamp(
+            self.player.x,
+            40,
+            self.world.world_width - 40
         )
 
-        for enemy in self.enemies:
-            enemy.update(self.player, dt)
-
-        # Gather automatically when pressing E
-        if keys[pygame.K_e]:
-            self.gather()
-
-        # Network movement
-        if time.time() - self.last_send > 0.08:
-
-            self.net.send({
-                "type": "move",
-                "x": self.player.x,
-                "y": self.player.y
-            })
-
-            self.last_send = time.time()
-
-        # Camera
-        self.camera_x = clamp(
-            self.player.x - WIDTH / 2,
-            0,
-            3000 - WIDTH
+        self.player.y = clamp(
+            self.player.y,
+            40,
+            self.world.world_height - 40
         )
 
-        self.camera_y = clamp(
-            self.player.y - HEIGHT / 2,
-            0,
-            2500 - HEIGHT
-        )
+    # --------------------------------------------------------
+    # COLLECT
+    # --------------------------------------------------------
 
-        # Receive network
-        for msg in self.net.messages():
-            self.handle_network(msg)
-
-    # ========================================================
-    # NETWORK EVENTS
-    # ========================================================
-
-    def handle_network(self, msg):
-
-        typ = msg.get("type")
-
-        if typ == "auth":
-
-            self.message = msg.get("message", "")
-
-            if msg.get("success"):
-
-                data = msg.get("player", {})
-
-                self.player.username = self.username
-
-                self.player.x = data.get("x", 1500)
-                self.player.y = data.get("y", 1250)
-
-                self.player.hp = data.get("hp", 100)
-                self.player.max_hp = data.get("max_hp", 100)
-                self.player.level = data.get("level", 1)
-                self.player.xp = data.get("xp", 0)
-                self.player.gold = data.get("gold", 100)
-                self.player.element = data.get(
-                    "element", "Fire"
+    def collect_resources(self):
+        for resource in self.world.resources:
+            if resource.collect(self.player):
+                self.notify(
+                    f"Collected {resource.kind}!"
                 )
 
-                self.player.skin = data.get("skin", 0)
-                self.player.hair = data.get("hair", 0)
+    # --------------------------------------------------------
+    # PVP
+    # --------------------------------------------------------
 
-                self.player.inventory = data.get(
-                    "inventory",
-                    self.player.inventory
+    def find_nearby_player(self):
+        closest = None
+        closest_distance = 100000
+
+        for other in self.world.other_players:
+            d = distance(
+                self.player.x,
+                self.player.y,
+                other.x,
+                other.y
+            )
+
+            if d < 90 and d < closest_distance:
+                closest = other
+                closest_distance = d
+
+        return closest
+
+    def attack_player(self):
+        enemy = self.find_nearby_player()
+
+        if not enemy:
+            self.notify(
+                "No player nearby."
+            )
+            return
+
+        damage = self.player.attack()
+
+        enemy.hp -= damage
+
+        self.chat.add(
+            "COMBAT",
+            f"You hit {enemy.username} for {damage}!"
+        )
+
+        if enemy.hp <= 0:
+            reward = random.randint(25, 80)
+
+            self.player.gold += reward
+            self.player.add_xp(50)
+
+            enemy.hp = enemy.max_hp
+
+            enemy.x = random.randint(
+                300,
+                self.world.world_width - 300
+            )
+
+            enemy.y = random.randint(
+                300,
+                self.world.world_height - 300
+            )
+
+            self.notify(
+                f"Player defeated! +{reward} gold"
+            )
+
+    # --------------------------------------------------------
+    # CRAFTING
+    # --------------------------------------------------------
+
+    def craft(self, item):
+        inv = self.player.inventory
+
+        recipes = {
+            "Iron Sword": {
+                "Iron": 5,
+                "Wood": 2
+            },
+            "Iron Armor": {
+                "Iron": 10,
+                "Crystal": 2
+            },
+            "Crystal Armor": {
+                "Crystal": 8,
+                "Dragon Scale": 2
+            },
+            "Potion": {
+                "Crystal": 1,
+                "Wood": 1
+            }
+        }
+
+        if item not in recipes:
+            return
+
+        recipe = recipes[item]
+
+        for material, amount in recipe.items():
+            if inv.get(material, 0) < amount:
+                self.notify(
+                    f"Need more {material}."
                 )
+                return
 
-                self.state = "WORLD"
+        for material, amount in recipe.items():
+            inv[material] -= amount
 
-                self.net.send({
-                    "type": "request_world"
-                })
+        if item == "Potion":
+            inv["Potion"] += 1
 
-        elif typ == "world":
+        elif item == "Iron Sword":
+            self.player.equipment["Weapon"] = item
+            self.player.attack_power += 5
 
-            self.players = msg.get("players", {})
-            self.resources = msg.get("resources", [])
+        elif item == "Iron Armor":
+            self.player.equipment["Chest"] = item
+            self.player.max_hp += 25
+            self.player.hp = self.player.max_hp
 
-        elif typ == "chat":
+        elif item == "Crystal Armor":
+            self.player.equipment["Chest"] = item
+            self.player.max_hp += 50
+            self.player.hp = self.player.max_hp
 
-            self.chat.append(
-                f"{msg.get('username', '?')}: "
-                f"{msg.get('message', '')}"
-            )
-
-            self.chat = self.chat[-8:]
-
-        elif typ == "system":
-
-            self.chat.append(
-                "[Realm] " + msg.get("message", "")
-            )
-
-            self.chat = self.chat[-8:]
-
-    # ========================================================
-    # RENDER WORLD
-    # ========================================================
-
-    def render_world(self):
-
-        screen.fill((18, 39, 29))
-
-        # Ground
-        pygame.draw.rect(
-            screen,
-            (26, 62, 42),
-            (0, 0, WIDTH, HEIGHT)
+        self.notify(
+            f"Crafted {item}!"
         )
 
-        # World grid
-        grid = 100
+    # --------------------------------------------------------
+    # CUSTOMIZATION
+    # --------------------------------------------------------
 
-        for x in range(
-            int(self.camera_x // grid) * grid,
-            int(self.camera_x + WIDTH) + grid,
-            grid
-        ):
-            sx = x - self.camera_x
-            pygame.draw.line(
-                screen,
-                (28, 67, 45),
-                (sx, 0),
-                (sx, HEIGHT)
-            )
+    def change_skin(self):
+        self.player.skin = (
+            self.player.skin + 1
+        ) % 5
 
-        for y in range(
-            int(self.camera_y // grid) * grid,
-            int(self.camera_y + HEIGHT) + grid,
-            grid
-        ):
-            sy = y - self.camera_y
-            pygame.draw.line(
-                screen,
-                (28, 67, 45),
-                (0, sy),
-                (WIDTH, sy)
-            )
-
-        # River
-        river = pygame.Rect(
-            1350 - self.camera_x,
-            0,
-            220,
-            HEIGHT
+        self.notify(
+            f"Skin changed to {self.player.skin + 1}"
         )
 
-        pygame.draw.rect(
-            screen,
-            (25, 80, 115),
-            river
+    def change_element(self):
+        elements = list(ELEMENT_COLORS.keys())
+
+        index = elements.index(
+            self.player.element
         )
 
-        # Town
-        town_x = 1350 - self.camera_x
-        town_y = 1050 - self.camera_y
+        index = (
+            index + 1
+        ) % len(elements)
 
-        pygame.draw.circle(
-            screen,
-            (90, 75, 55),
-            (int(town_x), int(town_y)),
-            230
+        self.player.element = elements[index]
+
+        self.notify(
+            f"Element changed to {self.player.element}"
         )
 
-        draw_text(
-            screen,
-            "EMBERFALL",
-            (town_x, town_y - 250),
-            F24,
-            GOLD,
-            True
-        )
+    # --------------------------------------------------------
+    # DRAW PLAYER
+    # --------------------------------------------------------
 
-        # Trees
-        random.seed(7)
+    def draw_player(self, surface, camera_x, camera_y):
+        sx = int(self.player.x - camera_x)
+        sy = int(self.player.y - camera_y)
 
-        for i in range(100):
-
-            x = random.randint(40, 2960)
-            y = random.randint(40, 2460)
-
-            sx = x - self.camera_x
-            sy = y - self.camera_y
-
-            if -50 < sx < WIDTH + 50 and -50 < sy < HEIGHT + 50:
-
-                pygame.draw.circle(
-                    screen,
-                    (18, 90, 48),
-                    (int(sx), int(sy)),
-                    25
-                )
-
-                pygame.draw.rect(
-                    screen,
-                    (75, 55, 35),
-                    (sx - 6, sy + 12, 12, 30)
-                )
-
-        # Resources
-        for r in self.resources:
-
-            sx = r["x"] - self.camera_x
-            sy = r["y"] - self.camera_y
-
-            if r["type"] == "wood":
-                col = (115, 75, 38)
-
-            elif r["type"] == "ore":
-                col = (125, 135, 155)
-
-            else:
-                col = (80, 190, 100)
-
-            pygame.draw.circle(
-                screen,
-                col,
-                (int(sx), int(sy)),
-                13
-            )
-
-            pygame.draw.circle(
-                screen,
-                WHITE,
-                (int(sx), int(sy)),
-                13,
-                2
-            )
-
-        # Enemies
-        for enemy in self.enemies:
-
-            if enemy.dead:
-                continue
-
-            sx = enemy.x - self.camera_x
-            sy = enemy.y - self.camera_y
-
-            pygame.draw.circle(
-                screen,
-                enemy.color,
-                (int(sx), int(sy)),
-                28
-            )
-
-            pygame.draw.circle(
-                screen,
-                BLACK,
-                (int(sx), int(sy)),
-                28,
-                3
-            )
-
-            draw_text(
-                screen,
-                enemy.kind,
-                (sx, sy - 50),
-                F12,
-                WHITE,
-                True
-            )
-
-            pygame.draw.rect(
-                screen,
-                (60, 20, 20),
-                (sx - 30, sy - 40, 60, 6)
-            )
-
-            pygame.draw.rect(
-                screen,
-                RED,
-                (
-                    sx - 30,
-                    sy - 40,
-                    60 * max(
-                        0,
-                        enemy.hp / enemy.max_hp
-                    ),
-                    6
-                )
-            )
-
-        # Other players
-        for name, p in self.players.items():
-
-            if name == self.player.username:
-                continue
-
-            sx = p["x"] - self.camera_x
-            sy = p["y"] - self.camera_y
-
-            self.draw_character(
-                sx,
-                sy,
-                p.get("element", "Fire"),
-                p.get("skin", 0),
-                p.get("hair", 0)
-            )
-
-            draw_text(
-                screen,
-                f"{name}  Lv.{p.get('level', 1)}",
-                (sx, sy - 55),
-                F12,
-                WHITE,
-                True
-            )
-
-        # Local player
-        self.draw_character(
-            self.player.x - self.camera_x,
-            self.player.y - self.camera_y,
+        color = ELEMENT_COLORS.get(
             self.player.element,
-            self.player.skin,
-            self.player.hair
+            COLOR_BLUE
         )
-
-        draw_text(
-            screen,
-            self.player.username,
-            (
-                self.player.x - self.camera_x,
-                self.player.y - 58
-            ),
-            F12,
-            GOLD,
-            True
-        )
-
-        self.draw_hud()
-
-        if self.inventory_open:
-            self.draw_inventory()
-
-        if self.customize_open:
-            self.draw_customize()
-
-        if self.chat_open:
-            self.draw_chat_box()
-
-    # ========================================================
-    # CHARACTER
-    # ========================================================
-
-    def draw_character(
-        self,
-        x,
-        y,
-        element,
-        skin=0,
-        hair=0
-    ):
-
-        col = ELEMENTS.get(element, WHITE)
 
         skin_colors = [
-            (245, 190, 145),
-            (205, 145, 100),
-            (170, 105, 70),
-            (115, 70, 45),
-            (235, 165, 125)
+            (245, 205, 170),
+            (190, 130, 90),
+            (125, 80, 55),
+            (245, 175, 130),
+            (95, 60, 45)
         ]
 
-        skin_col = skin_colors[skin % len(skin_colors)]
+        skin_color = skin_colors[
+            self.player.skin
+        ]
 
         # Shadow
         pygame.draw.ellipse(
-            screen,
-            (8, 15, 10),
-            (x - 25, y + 20, 50, 18)
+            surface,
+            (20, 30, 20),
+            (sx - 20, sy + 20, 40, 12)
         )
 
-        # Cape
-        pygame.draw.polygon(
-            screen,
-            col,
-            [
-                (x - 20, y - 5),
-                (x + 22, y - 5),
-                (x + 28, y + 40),
-                (x - 28, y + 40)
-            ]
-        )
-
-        # Body armour
+        # Body
         pygame.draw.rect(
-            screen,
-            (80, 88, 105),
-            (x - 18, y, 36, 42),
-            border_radius=7
+            surface,
+            color,
+            (sx - 17, sy - 10, 34, 42),
+            border_radius=8
         )
 
         # Head
         pygame.draw.circle(
-            screen,
-            skin_col,
-            (int(x), int(y - 18)),
-            17
+            surface,
+            skin_color,
+            (sx, sy - 25),
+            14
         )
 
-        hair_colors = [
-            (30, 25, 22),
-            (80, 45, 25),
-            (170, 120, 45),
-            (35, 35, 40),
-            (210, 210, 210)
-        ]
+        # Armour
+        if self.player.armor != "Cloth":
+            pygame.draw.rect(
+                surface,
+                (160, 160, 170),
+                (sx - 18, sy - 10, 36, 35),
+                3,
+                border_radius=7
+            )
 
-        hc = hair_colors[hair % len(hair_colors)]
-
-        pygame.draw.arc(
-            screen,
-            hc,
-            (x - 17, y - 34, 34, 30),
-            math.pi,
-            math.pi * 2,
-            7
-        )
-
-        # Eyes
-        pygame.draw.circle(
-            screen,
-            BLACK,
-            (int(x - 6), int(y - 19)),
-            2
-        )
-
-        pygame.draw.circle(
-            screen,
-            BLACK,
-            (int(x + 6), int(y - 19)),
-            2
-        )
-
-        # Weapon
+        # Sword
         pygame.draw.line(
-            screen,
-            (220, 220, 230),
-            (x + 20, y + 20),
-            (x + 45, y - 15),
+            surface,
+            (225, 225, 230),
+            (sx + 15, sy),
+            (sx + 40, sy - 30),
             5
         )
 
-    # ========================================================
-    # HUD
-    # ========================================================
+        # Name
+        draw_text(
+            surface,
+            self.player.username,
+            sx,
+            sy - 55,
+            WHITE,
+            FONT_SMALL,
+            True
+        )
 
-    def draw_hud(self):
+    # --------------------------------------------------------
+    # UI
+    # --------------------------------------------------------
 
+    def draw_hud(self, surface):
         # Top bar
-        panel(
-            screen,
-            pygame.Rect(20, 20, WIDTH - 40, 75),
-            (15, 20, 30)
+        pygame.draw.rect(
+            surface,
+            (15, 19, 27),
+            (0, 0, WIDTH, 75)
+        )
+
+        draw_text(
+            surface,
+            "VOIDCLIPS",
+            20,
+            15,
+            COLOR_PURPLE,
+            FONT_MED
+        )
+
+        draw_text(
+            surface,
+            f"Lv {self.player.level}",
+            180,
+            18,
+            COLOR_GOLD,
+            FONT
         )
 
         # HP
         pygame.draw.rect(
-            screen,
-            (55, 25, 30),
-            (40, 48, 270, 18),
-            border_radius=8
+            surface,
+            (60, 20, 25),
+            (280, 20, 190, 18),
+            border_radius=5
         )
 
         pygame.draw.rect(
-            screen,
-            RED,
+            surface,
+            COLOR_RED,
             (
-                40,
-                48,
-                270 * clamp(
-                    self.player.hp /
-                    self.player.max_hp,
-                    0,
-                    1
-                ),
-                18
-            ),
-            border_radius=8
-        )
-
-        draw_text(
-            screen,
-            f"HP {self.player.hp}/{self.player.max_hp}",
-            (50, 47),
-            F12,
-            WHITE
-        )
-
-        # XP
-        xp_ratio = (
-            self.player.xp /
-            self.player.xp_needed()
-        )
-
-        pygame.draw.rect(
-            screen,
-            (35, 40, 60),
-            (330, 48, 270, 18),
-            border_radius=8
-        )
-
-        pygame.draw.rect(
-            screen,
-            BLUE,
-            (
-                330,
-                48,
-                270 * xp_ratio,
-                18
-            ),
-            border_radius=8
-        )
-
-        draw_text(
-            screen,
-            f"LEVEL {self.player.level}",
-            (340, 47),
-            F12,
-            WHITE
-        )
-
-        draw_text(
-            screen,
-            f"⚔ {self.player.element}",
-            (630, 43),
-            F18,
-            ELEMENTS[self.player.element]
-        )
-
-        draw_text(
-            screen,
-            f"◆ {self.player.gold}",
-            (800, 43),
-            F18,
-            GOLD
-        )
-
-        draw_text(
-            screen,
-            "WASD Move",
-            (WIDTH - 390, 35),
-            F12,
-            MUTED
-        )
-
-        draw_text(
-            screen,
-            "E Gather   Click Attack   I Inventory   C Customize",
-            (WIDTH - 390, 55),
-            F12,
-            MUTED
-        )
-
-        # Bottom message
-        panel(
-            screen,
-            pygame.Rect(
+                280,
                 20,
-                HEIGHT - 65,
-                620,
-                45
-            ),
-            (15, 20, 28)
-        )
-
-        draw_text(
-            screen,
-            self.message,
-            (35, HEIGHT - 53),
-            F14,
-            WHITE
-        )
-
-        # Chat
-        panel(
-            screen,
-            pygame.Rect(
-                WIDTH - 350,
-                HEIGHT - 210,
-                330,
-                140
-            ),
-            (13, 17, 25)
-        )
-
-        for i, line in enumerate(
-            self.chat[-6:]
-        ):
-            draw_text(
-                screen,
-                line[:42],
-                (
-                    WIDTH - 335,
-                    HEIGHT - 195 + i * 20
+                int(
+                    190 *
+                    self.player.hp /
+                    self.player.max_hp
                 ),
-                F12,
-                MUTED
-            )
-
-    # ========================================================
-    # INVENTORY
-    # ========================================================
-
-    def draw_inventory(self):
-
-        overlay = pygame.Surface(
-            (WIDTH, HEIGHT),
-            pygame.SRCALPHA
-        )
-
-        overlay.fill((0, 0, 0, 120))
-        screen.blit(overlay, (0, 0))
-
-        box = pygame.Rect(
-            260, 100, 760, 520
-        )
-
-        panel(
-            screen,
-            box,
-            (20, 25, 35),
-            15,
-            (75, 90, 115)
+                18
+            ),
+            border_radius=5
         )
 
         draw_text(
-            screen,
-            "INVENTORY",
-            (box.x + 30, box.y + 25),
-            F30,
-            WHITE
-        )
-
-        items = [
-            ("Wood", "wood"),
-            ("Ore", "ore"),
-            ("Herbs", "herb"),
-            ("Iron Armour", "iron_armor"),
-            ("Health Potion", "health_potion")
-        ]
-
-        for i, (label, key) in enumerate(items):
-
-            x = box.x + 35 + (i % 3) * 220
-            y = box.y + 90 + (i // 3) * 150
-
-            slot = pygame.Rect(
-                x, y, 190, 120
-            )
-
-            panel(
-                screen,
-                slot,
-                PANEL2,
-                10,
-                (60, 70, 90)
-            )
-
-            draw_text(
-                screen,
-                label,
-                (x + 15, y + 15),
-                F16
-            )
-
-            draw_text(
-                screen,
-                f"x {self.player.inventory[key]}",
-                (x + 15, y + 50),
-                F24,
-                GOLD
-            )
-
-        craft = pygame.Rect(
-            720, 570, 200, 50
-        )
-
-        button(
-            screen,
-            craft,
-            "FORGE ARMOUR",
-            pygame.mouse.get_pos()
-        )
-
-        close = pygame.Rect(
-            720, 630, 200, 50
-        )
-
-        button(
-            screen,
-            close,
-            "CLOSE",
-            pygame.mouse.get_pos()
-        )
-
-        draw_text(
-            screen,
-            "Armour recipe: 5 Wood + 8 Ore",
-            (300, 570),
-            F14,
-            MUTED
-        )
-
-    # ========================================================
-    # CUSTOMIZATION
-    # ========================================================
-
-    def draw_customize(self):
-
-        overlay = pygame.Surface(
-            (WIDTH, HEIGHT),
-            pygame.SRCALPHA
-        )
-
-        overlay.fill((0, 0, 0, 150))
-        screen.blit(overlay, (0, 0))
-
-        box = pygame.Rect(
-            250, 120, 780, 520
-        )
-
-        panel(
-            screen,
-            box,
-            (20, 25, 36),
-            15,
-            (80, 90, 120)
-        )
-
-        draw_text(
-            screen,
-            "CHARACTER FORGE",
-            (box.x + 35, box.y + 25),
-            F30,
-            WHITE
-        )
-
-        # Preview
-        pygame.draw.circle(
-            screen,
-            (35, 42, 55),
-            (530, 340),
-            150
-        )
-
-        self.draw_character(
-            530,
-            350,
-            self.player.element,
-            self.player.skin,
-            self.player.hair
-        )
-
-        draw_text(
-            screen,
-            self.player.element,
-            (530, 480),
-            F18,
-            ELEMENTS[self.player.element],
+            surface,
+            f"{self.player.hp}/{self.player.max_hp}",
+            375,
+            29,
+            WHITE,
+            FONT_TINY,
             True
         )
 
-        controls = [
-            (230, "CHANGE SKIN"),
-            (290, "CHANGE HAIR"),
-            (350, "CHANGE ELEMENT"),
-            (430, "DONE")
-        ]
-
-        for y, text in controls:
-
-            r = pygame.Rect(
-                760, y, 200, 45
-            )
-
-            button(
-                screen,
-                r,
-                text,
-                pygame.mouse.get_pos()
-            )
-
-    # ========================================================
-    # CHAT INPUT
-    # ========================================================
-
-    def draw_chat_box(self):
-
-        r = pygame.Rect(
-            WIDTH - 370,
-            HEIGHT - 70,
-            350,
-            45
-        )
-
-        panel(
-            screen,
-            r,
-            (20, 25, 35),
-            8,
-            CYAN
+        draw_text(
+            surface,
+            f"Gold: {self.player.gold}",
+            500,
+            18,
+            COLOR_GOLD,
+            FONT
         )
 
         draw_text(
-            screen,
-            self.chat_input + "|",
-            (r.x + 12, r.y + 12),
-            F14,
-            WHITE
+            surface,
+            f"Element: {self.player.element}",
+            650,
+            18,
+            ELEMENT_COLORS[self.player.element],
+            FONT
         )
 
-    # ========================================================
-    # LOGIN SCREEN
-    # ========================================================
+        draw_text(
+            surface,
+            "WASD Move | E Collect | F Attack | I Inventory | C Craft | V Customize",
+            20,
+            55,
+            COLOR_MUTED,
+            FONT_TINY
+        )
 
-    def render_login(self):
+    def draw_inventory(self, surface):
+        panel = pygame.Rect(
+            700,
+            100,
+            370,
+            500
+        )
 
-        screen.fill(BG)
+        pygame.draw.rect(
+            surface,
+            (20, 25, 35),
+            panel,
+            border_radius=12
+        )
 
-        # Decorative glow
-        for radius in range(300, 50, -15):
-            alpha = max(
-                0,
-                70 - radius // 5
+        pygame.draw.rect(
+            surface,
+            COLOR_BLUE,
+            panel,
+            2,
+            border_radius=12
+        )
+
+        draw_text(
+            surface,
+            "INVENTORY",
+            725,
+            125,
+            COLOR_GOLD,
+            FONT_BIG
+        )
+
+        y = 185
+
+        for item, amount in self.player.inventory.items():
+            draw_text(
+                surface,
+                f"{item}: {amount}",
+                735,
+                y,
+                WHITE,
+                FONT
             )
 
-            glow = pygame.Surface(
-                (WIDTH, HEIGHT),
-                pygame.SRCALPHA
+            y += 40
+
+        y += 10
+
+        draw_text(
+            surface,
+            "EQUIPMENT",
+            725,
+            y,
+            COLOR_CYAN,
+            FONT_MED
+        )
+
+        y += 45
+
+        for slot, item in self.player.equipment.items():
+            draw_text(
+                surface,
+                f"{slot}: {item}",
+                735,
+                y,
+                COLOR_TEXT,
+                FONT_SMALL
+            )
+
+            y += 30
+
+    def draw_crafting(self, surface):
+        panel = pygame.Rect(
+            680,
+            90,
+            390,
+            540
+        )
+
+        pygame.draw.rect(
+            surface,
+            (20, 24, 34),
+            panel,
+            border_radius=12
+        )
+
+        pygame.draw.rect(
+            surface,
+            COLOR_GOLD,
+            panel,
+            2,
+            border_radius=12
+        )
+
+        draw_text(
+            surface,
+            "CRAFTING",
+            710,
+            115,
+            COLOR_GOLD,
+            FONT_BIG
+        )
+
+        recipes = [
+            ("Iron Sword", "5 Iron + 2 Wood"),
+            ("Iron Armor", "10 Iron + 2 Crystal"),
+            ("Crystal Armor", "8 Crystal + 2 Dragon Scale"),
+            ("Potion", "1 Crystal + 1 Wood")
+        ]
+
+        y = 180
+
+        for item, recipe in recipes:
+            rect = pygame.Rect(
+                705,
+                y,
+                335,
+                70
+            )
+
+            pygame.draw.rect(
+                surface,
+                COLOR_PANEL2,
+                rect,
+                border_radius=8
+            )
+
+            draw_text(
+                surface,
+                item,
+                rect.x + 15,
+                rect.y + 10,
+                WHITE,
+                FONT
+            )
+
+            draw_text(
+                surface,
+                recipe,
+                rect.x + 15,
+                rect.y + 40,
+                COLOR_MUTED,
+                FONT_TINY
+            )
+
+            y += 85
+
+    def draw_customize(self, surface):
+        panel = pygame.Rect(
+            700,
+            100,
+            350,
+            450
+        )
+
+        pygame.draw.rect(
+            surface,
+            (20, 24, 34),
+            panel,
+            border_radius=12
+        )
+
+        pygame.draw.rect(
+            surface,
+            COLOR_PURPLE,
+            panel,
+            2,
+            border_radius=12
+        )
+
+        draw_text(
+            surface,
+            "CHARACTER",
+            730,
+            130,
+            COLOR_PURPLE,
+            FONT_BIG
+        )
+
+        draw_text(
+            surface,
+            f"Element: {self.player.element}",
+            730,
+            195,
+            ELEMENT_COLORS[self.player.element],
+            FONT
+        )
+
+        draw_text(
+            surface,
+            f"Skin: {self.player.skin + 1}",
+            730,
+            240,
+            WHITE,
+            FONT
+        )
+
+        draw_text(
+            surface,
+            f"Weapon: {self.player.equipment['Weapon']}",
+            730,
+            285,
+            WHITE,
+            FONT
+        )
+
+        draw_text(
+            surface,
+            f"Armour: {self.player.equipment['Chest']}",
+            730,
+            330,
+            WHITE,
+            FONT
+        )
+
+        draw_text(
+            surface,
+            "S = change skin",
+            730,
+            400,
+            COLOR_MUTED,
+            FONT_SMALL
+        )
+
+        draw_text(
+            surface,
+            "L = change element",
+            730,
+            430,
+            COLOR_MUTED,
+            FONT_SMALL
+        )
+
+    # --------------------------------------------------------
+    # LOGIN SCREEN
+    # --------------------------------------------------------
+
+    def draw_login(self, surface):
+        surface.fill(COLOR_BG)
+
+        # Background glow
+        for r in range(350, 50, -25):
+            alpha_color = (
+                20 + int((350 - r) / 8),
+                15,
+                45 + int((350 - r) / 4)
             )
 
             pygame.draw.circle(
-                glow,
-                (70, 50, 130, alpha),
-                (WIDTH // 2, 180),
-                radius
+                surface,
+                alpha_color,
+                (WIDTH // 2, 220),
+                r,
+                2
             )
 
-            screen.blit(glow, (0, 0))
-
         draw_text(
-            screen,
-            "DRAGON SLAYER",
-            (WIDTH // 2, 80),
-            F60,
-            GOLD,
+            surface,
+            "VOIDCLIPS",
+            WIDTH // 2,
+            100,
+            COLOR_PURPLE,
+            FONT_TITLE,
             True
         )
 
         draw_text(
-            screen,
-            "ONLINE",
-            (WIDTH // 2, 140),
-            F30,
-            PURPLE,
+            surface,
+            "BETA 2",
+            WIDTH // 2,
+            145,
+            COLOR_GOLD,
+            FONT_MED,
             True
         )
 
         draw_text(
-            screen,
-            "ENTER THE ELEMENTAL CHRONICLES",
-            (WIDTH // 2, 185),
-            F14,
-            MUTED,
+            surface,
+            "OPEN WORLD DRAGON RPG",
+            WIDTH // 2,
+            185,
+            COLOR_MUTED,
+            FONT_SMALL,
             True
         )
 
-        box = pygame.Rect(
-            350, 225, 580, 370
-        )
-
-        panel(
-            screen,
-            box,
-            (18, 23, 34),
-            15,
-            (60, 70, 95)
-        )
-
         draw_text(
-            screen,
-            "LOGIN" if self.auth_mode == "login"
-            else "CREATE ACCOUNT",
-            (390, 240),
-            F24,
-            WHITE
-        )
-
-        # Username
-        user_box = pygame.Rect(
-            390, 270, 500, 55
-        )
-
-        col = (
-            (42, 55, 78)
-            if self.active_field == "username"
-            else PANEL2
-        )
-
-        panel(
-            screen,
-            user_box,
-            col,
-            8,
-            BLUE if self.active_field == "username"
-            else None
-        )
-
-        draw_text(
-            screen,
+            surface,
             "Username",
-            (405, 280),
-            F12,
-            MUTED
+            390,
+            250,
+            COLOR_MUTED,
+            FONT_SMALL
         )
 
         draw_text(
-            screen,
-            self.username or "Type your username...",
-            (405, 300),
-            F16,
-            WHITE if self.username else MUTED
-        )
-
-        # Password
-        pass_box = pygame.Rect(
-            390, 350, 500, 55
-        )
-
-        col = (
-            (42, 55, 78)
-            if self.active_field == "password"
-            else PANEL2
-        )
-
-        panel(
-            screen,
-            pass_box,
-            col,
-            8,
-            BLUE if self.active_field == "password"
-            else None
-        )
-
-        draw_text(
-            screen,
+            surface,
             "Password",
-            (405, 360),
-            F12,
-            MUTED
+            390,
+            320,
+            COLOR_MUTED,
+            FONT_SMALL
         )
 
-        masked = "*" * len(self.password)
+        self.login_username.draw(surface)
+        self.login_password.draw(surface)
+
+        login_button = Button(
+            (390, 420, 150, 48),
+            "LOGIN",
+            COLOR_PANEL2,
+            COLOR_BLUE
+        )
+
+        register_button = Button(
+            (560, 420, 150, 48),
+            "REGISTER",
+            COLOR_PANEL2,
+            COLOR_PURPLE
+        )
+
+        login_button.draw(surface)
+        register_button.draw(surface)
 
         draw_text(
-            screen,
-            masked or "Type your password...",
-            (405, 380),
-            F16,
-            WHITE if self.password else MUTED
-        )
-
-        # Buttons
-        login_button = pygame.Rect(
-            390, 440, 240, 55
-        )
-
-        register_button = pygame.Rect(
-            650, 440, 240, 55
-        )
-
-        button(
-            screen,
-            login_button,
-            "ENTER REALM"
-            if self.auth_mode == "login"
-            else "CREATE ACCOUNT",
-            pygame.mouse.get_pos()
-        )
-
-        button(
-            screen,
-            register_button,
-            "SWITCH MODE",
-            pygame.mouse.get_pos()
-        )
-
-        connect = pygame.Rect(
-            390, 515, 500, 45
-        )
-
-        button(
-            screen,
-            connect,
-            "CONNECTED"
-            if self.net.connected
-            else "CONNECT TO SERVER",
-            pygame.mouse.get_pos()
-        )
-
-        draw_text(
-            screen,
-            self.message,
-            (WIDTH // 2, 635),
-            F14,
-            RED if (
-                "incorrect" in self.message.lower()
-                or "not found" in self.message.lower()
-                or "could not" in self.message.lower()
-            ) else CYAN,
+            surface,
+            "Click a box and type normally.",
+            WIDTH // 2,
+            510,
+            COLOR_MUTED,
+            FONT_SMALL,
             True
         )
 
         draw_text(
-            screen,
-            "Click a field to type • TAB switches fields • ENTER submits",
-            (WIDTH // 2, 680),
-            F12,
-            MUTED,
+            surface,
+            "No server required for this local beta.",
+            WIDTH // 2,
+            535,
+            COLOR_MUTED,
+            FONT_TINY,
             True
         )
 
-    # ========================================================
+    # --------------------------------------------------------
+    # WORLD RENDER
+    # --------------------------------------------------------
+
+    def render_world(self):
+        camera_x = self.player.x - WIDTH / 2
+        camera_y = self.player.y - HEIGHT / 2
+
+        camera_x = clamp(
+            camera_x,
+            0,
+            self.world.world_width - WIDTH
+        )
+
+        camera_y = clamp(
+            camera_y,
+            0,
+            self.world.world_height - HEIGHT
+        )
+
+        self.world.draw(
+            screen,
+            camera_x,
+            camera_y
+        )
+
+        self.draw_player(
+            screen,
+            camera_x,
+            camera_y
+        )
+
+        self.draw_hud(screen)
+
+        self.chat.draw(screen)
+
+        # Nearby player hint
+        enemy = self.find_nearby_player()
+
+        if enemy:
+            draw_text(
+                screen,
+                f"F - Attack {enemy.username}",
+                WIDTH // 2,
+                100,
+                COLOR_RED,
+                FONT_MED,
+                True
+            )
+
+        if self.inventory_menu:
+            self.draw_inventory(screen)
+
+        if self.craft_menu:
+            self.draw_crafting(screen)
+
+        if self.customize_menu:
+            self.draw_customize(screen)
+
+        if self.notification_timer > 0:
+            pygame.draw.rect(
+                screen,
+                (15, 20, 30),
+                (WIDTH // 2 - 220, HEIGHT - 230, 440, 50),
+                border_radius=10
+            )
+
+            draw_text(
+                screen,
+                self.notification,
+                WIDTH // 2,
+                HEIGHT - 205,
+                COLOR_GOLD,
+                FONT,
+                True
+            )
+
+    # --------------------------------------------------------
+    # EVENTS
+    # --------------------------------------------------------
+
+    def handle_event(self, event):
+
+        if self.state == "LOGIN":
+
+            self.login_username.handle_event(event)
+            self.login_password.handle_event(event)
+
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                if event.button == 1:
+
+                    login_rect = pygame.Rect(
+                        390,
+                        420,
+                        150,
+                        48
+                    )
+
+                    register_rect = pygame.Rect(
+                        560,
+                        420,
+                        150,
+                        48
+                    )
+
+                    if login_rect.collidepoint(
+                        event.pos
+                    ):
+                        self.login()
+
+                    elif register_rect.collidepoint(
+                        event.pos
+                    ):
+                        if self.register_mode:
+                            self.register()
+                        else:
+                            self.register_mode = True
+                            self.notify(
+                                "Fill in your details and click REGISTER again."
+                            )
+
+            return
+
+        if self.state == "WORLD":
+
+            self.chat.handle_event(
+                event,
+                self.player.username
+            )
+
+            if event.type == pygame.KEYDOWN:
+
+                if event.key == pygame.K_e:
+                    self.collect_resources()
+
+                elif event.key == pygame.K_f:
+                    self.attack_player()
+
+                elif event.key == pygame.K_i:
+                    self.inventory_menu = not self.inventory_menu
+                    self.craft_menu = False
+                    self.customize_menu = False
+
+                elif event.key == pygame.K_c:
+                    self.craft_menu = not self.craft_menu
+                    self.inventory_menu = False
+                    self.customize_menu = False
+
+                elif event.key == pygame.K_v:
+                    self.customize_menu = not self.customize_menu
+                    self.inventory_menu = False
+                    self.craft_menu = False
+
+                elif event.key == pygame.K_h:
+                    if self.player.use_potion():
+                        self.notify(
+                            "Potion used!"
+                        )
+                    else:
+                        self.notify(
+                            "Cannot use potion."
+                        )
+
+                elif event.key == pygame.K_s:
+                    if self.customize_menu:
+                        self.change_skin()
+
+                elif event.key == pygame.K_l:
+                    if self.customize_menu:
+                        self.change_element()
+
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                if event.button == 1:
+
+                    # Craft buttons
+                    if self.craft_menu:
+
+                        recipes = [
+                            "Iron Sword",
+                            "Iron Armor",
+                            "Crystal Armor",
+                            "Potion"
+                        ]
+
+                        for i, item in enumerate(recipes):
+
+                            rect = pygame.Rect(
+                                705,
+                                180 + i * 85,
+                                335,
+                                70
+                            )
+
+                            if rect.collidepoint(
+                                event.pos
+                            ):
+                                self.craft(item)
+
+    # --------------------------------------------------------
+    # UPDATE
+    # --------------------------------------------------------
+
+    def update(self):
+
+        if self.state != "WORLD":
+            return
+
+        self.move_player()
+
+        self.world.update()
+
+        if self.notification_timer > 0:
+            self.notification_timer -= 1
+
+        # Small automatic regen
+        if self.player.hp < self.player.max_hp:
+            if random.random() < 0.002:
+                self.player.hp += 1
+
+        self.save_player()
+
+    # --------------------------------------------------------
     # RENDER
-    # ========================================================
+    # --------------------------------------------------------
 
     def render(self):
 
         if self.state == "LOGIN":
-            self.render_login()
+            self.draw_login(screen)
 
         elif self.state == "WORLD":
             self.render_world()
 
         pygame.display.flip()
 
+    # --------------------------------------------------------
+    # RUN
+    # --------------------------------------------------------
+
+    def run(self):
+
+        while self.running:
+
+            for event in pygame.event.get():
+
+                if event.type == pygame.QUIT:
+                    self.save_player()
+                    self.running = False
+
+                self.handle_event(event)
+
+            self.update()
+
+            self.render()
+
+            clock.tick(FPS)
+
+        pygame.quit()
+        sys.exit()
+
 
 # ============================================================
-# MAIN
+# START GAME
 # ============================================================
-
-def run_server():
-
-    server = Server()
-
-    try:
-        server.run()
-    except KeyboardInterrupt:
-        print("\nServer stopped.")
-
-
-def run_client():
-
-    game = Game()
-
-    # Try connecting immediately
-    game.connect()
-
-    running = True
-
-    while running:
-
-        dt = clock.tick(FPS) / 1000.0
-
-        for event in pygame.event.get():
-            game.input_event(event)
-
-        game.update(dt)
-        game.render()
-
-    pygame.quit()
-
 
 if __name__ == "__main__":
-
-    if len(sys.argv) > 1 and sys.argv[1].lower() == "server":
-        run_server()
-    else:
-        run_client()
+    game = Game()
+    game.run()

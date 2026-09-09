@@ -1,0 +1,22 @@
+{
+  "dev": {
+    "password": "2025",
+    "x": 1500,
+    "y": 1250,
+    "hp": 100,
+    "max_hp": 100,
+    "level": 1,
+    "xp": 0,
+    "gold": 100,
+    "element": "Fire",
+    "skin": 0,
+    "hair": 0,
+    "inventory": {
+      "wood": 0,
+      "ore": 0,
+      "herb": 0,
+      "iron_armor": 0,
+      "health_potion": 2
+    }
+  }
+}
