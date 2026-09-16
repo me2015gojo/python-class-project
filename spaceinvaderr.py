@@ -126,7 +126,7 @@ while running:
         
     if bullet_state == "fire":
         fire_bullet(bulletX, bulletY)
-        bulletY -= bulletY_change
+        bulletY -= bulletY_change   
         
     player(playerX, playerY)
     show_score(textX, textY)
@@ -134,3 +134,4 @@ while running:
     pygame.display.update()
 
 pygame.quit()
+ 

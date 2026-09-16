@@ -10,5 +10,11 @@
         "element": "Fire",
         "level": 1,
         "gold": 100
+    },
+    "dev999": {
+        "password": "905caba59d87774f04ed8a2066cfd1e1ccbc5c1afc0e863bb815a0a08d95d48b",
+        "element": "Fire",
+        "level": 1,
+        "gold": 100
     }
 }

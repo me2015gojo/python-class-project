@@ -17,7 +17,7 @@ def display():
     name=namenoobynoobnoob.get()
     global Message
     Message="greeting elder application!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\nToday's young date is:"
-    groot="hello"+name+"\n"
+    groot="hello "+name+"\n"
     text_box.insert(END,groot)
     text_box.insert(END,Message)
     text_box.insert(END, date.today())
